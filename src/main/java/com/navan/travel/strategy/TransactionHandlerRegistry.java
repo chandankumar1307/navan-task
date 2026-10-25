@@ -1,0 +1,38 @@
+package com.navan.travel.strategy;
+
+import com.navan.travel.domain.TransactionType;
+import com.navan.travel.domain.metadata.TransactionMetadata;
+import com.navan.travel.web.error.BadRequestException;
+import org.springframework.stereotype.Component;
+
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
+@Component
+public class TransactionHandlerRegistry {
+
+    private final Map<TransactionType, TransactionTypeHandler<?>> handlerMap = new EnumMap<>(TransactionType.class);
+
+    public TransactionHandlerRegistry(List<TransactionTypeHandler<?>> handlers) {
+        for (TransactionTypeHandler<?> handler : handlers) {
+            handlerMap.put(handler.getType(), handler);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends TransactionMetadata> TransactionTypeHandler<T> getHandler(TransactionType type) {
+        if (type == null) {
+            throw new BadRequestException("transaction type is required");
+        }
+        TransactionTypeHandler<?> handler = handlerMap.get(type);
+        if (handler == null) {
+            throw new BadRequestException("No handler registered for transaction type: " + type.getValue());
+        }
+        return (TransactionTypeHandler<T>) handler;
+    }
+
+    public TransactionTypeHandler<?> getHandlerAny(TransactionType type) {
+        return getHandler(type);
+    }
+}
