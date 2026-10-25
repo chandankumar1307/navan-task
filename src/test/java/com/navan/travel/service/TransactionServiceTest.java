@@ -21,8 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.SliceImpl;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -144,7 +144,7 @@ class TransactionServiceTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("limit cannot exceed 100");
 
-        when(transactionRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+        when(transactionRepository.findSliceBy(any(Pageable.class))).thenReturn(new SliceImpl<>(List.of()));
 
         // limit < 1 defaults to 50
         PageResponse<TransactionResponse> resDefault = service.listTransactions(0, -10);

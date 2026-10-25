@@ -8,6 +8,9 @@ import com.navan.travel.web.error.BadRequestException;
 import jakarta.validation.Validator;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+
 @Component
 public class FlightTransactionHandler extends AbstractTransactionHandler<FlightMetadata> {
 
@@ -33,6 +36,17 @@ public class FlightTransactionHandler extends AbstractTransactionHandler<FlightM
         for (FlightCoupon coupon : metadata.coupons()) {
             if (coupon.flightNumber() == null || coupon.flightNumber().isBlank()) {
                 throw new BadRequestException("Flight coupon must include flight_number");
+            }
+            Instant departure;
+            Instant arrival;
+            try {
+                departure = Instant.parse(coupon.departure());
+                arrival = Instant.parse(coupon.arrival());
+            } catch (DateTimeParseException e) {
+                throw new BadRequestException("Invalid timestamp for flight coupon departure or arrival (expected ISO-8601)");
+            }
+            if (!arrival.isAfter(departure)) {
+                throw new BadRequestException("Flight coupon departure must be strictly before arrival");
             }
         }
     }

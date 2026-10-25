@@ -115,4 +115,28 @@ class FlightTransactionHandlerTest {
         assertThat(deserialized.origin()).isEqualTo("TXL");
         assertThat(deserialized.coupons().get(0).flightNumber()).isEqualTo("BA982");
     }
+
+    @Test
+    @DisplayName("Rejects flight coupon with departure after arrival")
+    void testTemporalDepartureAfterArrival() {
+        FlightCoupon coupon = new FlightCoupon("BA", "BA982", "TXL", "LHR", "2026-03-11T09:00:00Z", "2026-03-11T08:00:00Z");
+        FlightMetadata metadata = new FlightMetadata("TXL", "LHR", new BigDecimal("200.00"), List.of(coupon));
+        JsonNode node = objectMapper.valueToTree(metadata);
+
+        assertThatThrownBy(() -> handler.parseAndValidateMetadata(node))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Flight coupon departure must be strictly before arrival");
+    }
+
+    @Test
+    @DisplayName("Rejects flight coupon with malformed timestamp")
+    void testMalformedTimestamp() {
+        FlightCoupon coupon = new FlightCoupon("BA", "BA982", "TXL", "LHR", "not-a-timestamp", "2026-03-11T08:00:00Z");
+        FlightMetadata metadata = new FlightMetadata("TXL", "LHR", new BigDecimal("200.00"), List.of(coupon));
+        JsonNode node = objectMapper.valueToTree(metadata);
+
+        assertThatThrownBy(() -> handler.parseAndValidateMetadata(node))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Invalid timestamp for flight coupon departure or arrival");
+    }
 }

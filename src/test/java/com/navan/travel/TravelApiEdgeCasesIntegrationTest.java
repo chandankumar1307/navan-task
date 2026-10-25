@@ -695,6 +695,7 @@ public class TravelApiEdgeCasesIntegrationTest {
         // Fetch slice offset=5, limit=4
         ResponseEntity<JsonNode> sliceRes = restTemplate.getForEntity(baseUrl + "/transactions?offset=5&limit=4", JsonNode.class);
         assertThat(sliceRes.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(sliceRes.getBody().get("has_more").asBoolean()).isTrue();
         JsonNode sliceItems = sliceRes.getBody().get("items");
         assertThat(sliceItems.size()).isEqualTo(4);
 
@@ -798,5 +799,83 @@ public class TravelApiEdgeCasesIntegrationTest {
         // Grand total must match exactly one of the valid sets (100.00 or 150.00)
         double grandTotal = finalBody.get("grand_total").asDouble();
         assertThat(grandTotal).isIn(100.00, 150.00);
+    }
+
+    @Test
+    @DisplayName("Rejects transactions with inverted temporal dates across modalities (400 Bad Request)")
+    void testTemporalValidationInversionRejection() {
+        // 1. Hotel check_out before check_in
+        Map<String, Object> badHotel = Map.of(
+                "type", "hotel",
+                "external_id", randomExternalId("bad-hotel-dates"),
+                "currency", "EUR",
+                "occurred_at", "2026-03-11T15:00:00Z",
+                "total", 200.0,
+                "tax_lines", List.of(),
+                "fee_lines", List.of(),
+                "metadata", Map.of(
+                        "name", "Bad Date Hotel",
+                        "address", Map.of("street", "123 Main", "city", "Berlin", "country", "DE"),
+                        "check_in", "2026-03-20",
+                        "check_out", "2026-03-18",
+                        "nights", 1,
+                        "room_rate_per_night", 200.0
+                )
+        );
+        ResponseEntity<JsonNode> hotelRes = restTemplate.postForEntity(baseUrl + "/transactions", new HttpEntity<>(badHotel, jsonHeaders()), JsonNode.class);
+        assertThat(hotelRes.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(hotelRes.getBody().get("detail").asText()).contains("check_out date must be strictly after check_in date");
+
+        // 2. Flight departure after arrival
+        Map<String, Object> badFlight = Map.of(
+                "type", "flight",
+                "external_id", randomExternalId("bad-flight-dates"),
+                "currency", "EUR",
+                "occurred_at", "2026-03-11T15:00:00Z",
+                "total", 200.0,
+                "tax_lines", List.of(),
+                "fee_lines", List.of(),
+                "metadata", Map.of(
+                        "origin", "BER",
+                        "destination", "LHR",
+                        "fare", 200.0,
+                        "coupons", List.of(
+                                Map.of(
+                                        "flight_number", "BA1",
+                                        "from", "BER",
+                                        "to", "LHR",
+                                        "departure", "2026-03-11T15:00:00Z",
+                                        "arrival", "2026-03-11T13:00:00Z"
+                                )
+                        )
+                )
+        );
+        ResponseEntity<JsonNode> flightRes = restTemplate.postForEntity(baseUrl + "/transactions", new HttpEntity<>(badFlight, jsonHeaders()), JsonNode.class);
+        assertThat(flightRes.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(flightRes.getBody().get("detail").asText()).contains("departure must be strictly before arrival");
+
+        // 3. Rail departure after arrival
+        Map<String, Object> badRail = Map.of(
+                "type", "rail",
+                "external_id", randomExternalId("bad-rail-dates"),
+                "currency", "EUR",
+                "occurred_at", "2026-03-13T15:00:00Z",
+                "total", 90.0,
+                "tax_lines", List.of(),
+                "fee_lines", List.of(),
+                "metadata", Map.of(
+                        "legs", List.of(
+                                Map.of(
+                                        "origin", "London",
+                                        "destination", "Paris",
+                                        "departure", "2026-03-13T18:00:00Z",
+                                        "arrival", "2026-03-13T16:00:00Z"
+                                )
+                        )
+                )
+        );
+        ResponseEntity<JsonNode> railRes = restTemplate.postForEntity(baseUrl + "/transactions", new HttpEntity<>(badRail, jsonHeaders()), JsonNode.class);
+        assertThat(railRes.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(railRes.getBody().get("detail").asText()).contains("departure must be strictly before arrival");
     }
 }

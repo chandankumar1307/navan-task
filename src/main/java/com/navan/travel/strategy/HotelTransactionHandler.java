@@ -7,6 +7,9 @@ import com.navan.travel.web.error.BadRequestException;
 import jakarta.validation.Validator;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+
 @Component
 public class HotelTransactionHandler extends AbstractTransactionHandler<HotelMetadata> {
 
@@ -28,6 +31,17 @@ public class HotelTransactionHandler extends AbstractTransactionHandler<HotelMet
     protected void validateCustom(HotelMetadata metadata) {
         if (metadata.address() == null) {
             throw new BadRequestException("Hotel address must include street, city, and country");
+        }
+        LocalDate checkIn;
+        LocalDate checkOut;
+        try {
+            checkIn = LocalDate.parse(metadata.checkIn());
+            checkOut = LocalDate.parse(metadata.checkOut());
+        } catch (DateTimeParseException e) {
+            throw new BadRequestException("Invalid date format for check_in or check_out (expected YYYY-MM-DD)");
+        }
+        if (!checkOut.isAfter(checkIn)) {
+            throw new BadRequestException("Hotel check_out date must be strictly after check_in date");
         }
     }
 

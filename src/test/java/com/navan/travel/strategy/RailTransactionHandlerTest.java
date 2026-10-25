@@ -86,4 +86,28 @@ class RailTransactionHandlerTest {
         RailMetadata deserialized = handler.deserializeMetadata(json);
         assertThat(deserialized.legs().get(0).trainNumber()).isEqualTo("EST1");
     }
+
+    @Test
+    @DisplayName("Rejects rail leg with departure after arrival")
+    void testTemporalDepartureAfterArrival() {
+        RailLeg leg = new RailLeg("London", "Paris", "2026-03-13T14:00:00Z", "2026-03-13T12:00:00Z", "EST1", "first");
+        RailMetadata metadata = new RailMetadata(List.of(leg));
+        JsonNode node = objectMapper.valueToTree(metadata);
+
+        assertThatThrownBy(() -> handler.parseAndValidateMetadata(node))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Rail leg departure must be strictly before arrival");
+    }
+
+    @Test
+    @DisplayName("Rejects rail leg with malformed timestamp")
+    void testMalformedTimestamp() {
+        RailLeg leg = new RailLeg("London", "Paris", "invalid-ts", "2026-03-13T12:00:00Z", "EST1", "first");
+        RailMetadata metadata = new RailMetadata(List.of(leg));
+        JsonNode node = objectMapper.valueToTree(metadata);
+
+        assertThatThrownBy(() -> handler.parseAndValidateMetadata(node))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Invalid timestamp for rail leg departure or arrival");
+    }
 }

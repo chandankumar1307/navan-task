@@ -516,6 +516,7 @@ public class TravelApiIntegrationTest {
         assertThat(customRes.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(customRes.getBody().get("items").size()).isEqualTo(2);
         assertThat(customRes.getBody().get("limit").asInt()).isEqualTo(2);
+        assertThat(customRes.getBody().get("has_more").asBoolean()).isTrue();
     }
 
     // =========================================================================

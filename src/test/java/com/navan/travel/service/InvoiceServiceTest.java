@@ -24,8 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.SliceImpl;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -78,7 +78,7 @@ class InvoiceServiceTest {
     @Test
     @DisplayName("createInvoice throws ResourceNotFoundException if any transaction ID is not found")
     void testCreateInvoiceTransactionNotFound() {
-        when(transactionRepository.findById("txn_missing")).thenReturn(Optional.empty());
+        when(transactionRepository.findAllById(List.of("txn_missing"))).thenReturn(List.of());
 
         CreateInvoiceRequest req = new CreateInvoiceRequest("txn_missing", null);
 
@@ -93,8 +93,7 @@ class InvoiceServiceTest {
         TransactionEntity eurTxn = new TransactionEntity("txn_1", "ext-1", TransactionType.FLIGHT, "EUR", Instant.now(), new BigDecimal("100.00"), "{}");
         TransactionEntity usdTxn = new TransactionEntity("txn_2", "ext-2", TransactionType.HOTEL, "USD", Instant.now(), new BigDecimal("200.00"), "{}");
 
-        when(transactionRepository.findById("txn_1")).thenReturn(Optional.of(eurTxn));
-        when(transactionRepository.findById("txn_2")).thenReturn(Optional.of(usdTxn));
+        when(transactionRepository.findAllById(List.of("txn_1", "txn_2"))).thenReturn(List.of(eurTxn, usdTxn));
 
         CreateInvoiceRequest req = new CreateInvoiceRequest(null, List.of("txn_1", "txn_2"));
 
@@ -114,8 +113,7 @@ class InvoiceServiceTest {
         TransactionEntity txn1 = new TransactionEntity("txn_1", "ext-1", TransactionType.FLIGHT, "EUR", Instant.now(), new BigDecimal("100.00"), flightMeta);
         TransactionEntity txn2 = new TransactionEntity("txn_2", "ext-2", TransactionType.HOTEL, "EUR", Instant.now(), new BigDecimal("200.00"), hotelMeta);
 
-        when(transactionRepository.findById("txn_1")).thenReturn(Optional.of(txn1));
-        when(transactionRepository.findById("txn_2")).thenReturn(Optional.of(txn2));
+        when(transactionRepository.findAllById(List.of("txn_1", "txn_2"))).thenReturn(List.of(txn1, txn2));
 
         when(invoiceRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -148,7 +146,7 @@ class InvoiceServiceTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("limit cannot exceed 100");
 
-        when(invoiceRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+        when(invoiceRepository.findSliceBy(any(Pageable.class))).thenReturn(new SliceImpl<>(List.of()));
 
         PageResponse<InvoiceResponse> res = service.listInvoices(0, -5);
         assertThat(res.limit()).isEqualTo(50);
@@ -176,7 +174,7 @@ class InvoiceServiceTest {
                 Instant.parse("2026-03-11T06:40:00Z"), new BigDecimal("150.00"), "{}");
 
         when(invoiceRepository.findByIdForUpdate("inv_1")).thenReturn(Optional.of(invoice));
-        when(transactionRepository.findById("txn_1")).thenReturn(Optional.of(txn1));
+        when(transactionRepository.findAllById(List.of("txn_1"))).thenReturn(List.of(txn1));
         when(invoiceRepository.saveAndFlush(any(InvoiceEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         CreateInvoiceRequest request = new CreateInvoiceRequest("txn_1", null);

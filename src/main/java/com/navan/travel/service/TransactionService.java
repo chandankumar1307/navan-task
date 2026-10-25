@@ -16,9 +16,8 @@ import com.navan.travel.web.error.BadRequestException;
 import com.navan.travel.web.error.ConflictException;
 import com.navan.travel.web.error.ResourceNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -117,13 +116,13 @@ public class TransactionService {
         }
 
         Pageable pageable = new OffsetLimitRequest(offset, limit, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
-        Page<TransactionEntity> page = transactionRepository.findAll(pageable);
+        Slice<TransactionEntity> slice = transactionRepository.findSliceBy(pageable);
 
-        List<TransactionResponse> items = page.getContent().stream()
+        List<TransactionResponse> items = slice.getContent().stream()
                 .map(this::toResponse)
                 .toList();
 
-        return new PageResponse<>(items, limit, offset, page.getTotalElements());
+        return new PageResponse<>(items, limit, offset, slice.hasNext());
     }
 
     @Transactional

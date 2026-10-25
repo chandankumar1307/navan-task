@@ -20,9 +20,8 @@ import com.navan.travel.web.dto.*;
 import com.navan.travel.web.error.BadRequestException;
 import com.navan.travel.web.error.ConflictException;
 import com.navan.travel.web.error.ResourceNotFoundException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class InvoiceService {
@@ -60,8 +60,10 @@ public class InvoiceService {
 
     @Transactional
     public InvoiceResponse createInvoice(CreateInvoiceRequest request) {
+        // Enforce Global Lock Ordering Hierarchy: Transactions FIRST (lexicographically sorted), Invoice SECOND
         List<String> txnIds = request.resolveTransactionIds();
-        List<TransactionEntity> transactions = loadTransactions(txnIds);
+        List<String> sortedTxnIds = txnIds.stream().sorted().toList();
+        List<TransactionEntity> transactions = loadTransactions(sortedTxnIds);
 
         validateCurrencies(transactions);
 
@@ -96,23 +98,25 @@ public class InvoiceService {
         }
 
         Pageable pageable = new OffsetLimitRequest(offset, limit, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
-        Page<InvoiceEntity> page = invoiceRepository.findAll(pageable);
+        Slice<InvoiceEntity> slice = invoiceRepository.findSliceBy(pageable);
 
-        List<InvoiceResponse> items = page.getContent().stream()
+        List<InvoiceResponse> items = slice.getContent().stream()
                 .map(this::toResponse)
                 .toList();
 
-        return new PageResponse<>(items, limit, offset, page.getTotalElements());
+        return new PageResponse<>(items, limit, offset, slice.hasNext());
     }
 
     @Transactional
     public InvoiceResponse patchInvoice(String id, CreateInvoiceRequest request) {
+        // Enforce Global Lock Ordering Hierarchy: Transactions FIRST (lexicographically sorted), Invoice SECOND
+        List<String> txnIds = request.resolveTransactionIds();
+        List<String> sortedTxnIds = txnIds.stream().sorted().toList();
+        List<TransactionEntity> transactions = loadTransactions(sortedTxnIds);
+        validateCurrencies(transactions);
+
         InvoiceEntity invoice = invoiceRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
-
-        List<String> txnIds = request.resolveTransactionIds();
-        List<TransactionEntity> transactions = loadTransactions(txnIds);
-        validateCurrencies(transactions);
 
         String currency = transactions.get(0).getCurrency();
         BigDecimal grandTotal = calculateGrandTotal(transactions);
@@ -134,13 +138,25 @@ public class InvoiceService {
     }
 
     private List<TransactionEntity> loadTransactions(List<String> txnIds) {
-        List<TransactionEntity> transactions = new ArrayList<>();
-        for (String txnId : txnIds) {
-            TransactionEntity txn = transactionRepository.findById(txnId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found for invoice: " + txnId));
-            transactions.add(txn);
+        List<TransactionEntity> transactions = transactionRepository.findAllById(txnIds);
+        if (transactions.size() != txnIds.size()) {
+            Set<String> foundIds = transactions.stream()
+                    .map(TransactionEntity::getId)
+                    .collect(Collectors.toSet());
+            for (String id : txnIds) {
+                if (!foundIds.contains(id)) {
+                    throw new ResourceNotFoundException("Transaction not found for invoice: " + id);
+                }
+            }
         }
-        return transactions;
+        // Preserve caller's input order
+        Map<String, TransactionEntity> map = transactions.stream()
+                .collect(Collectors.toMap(TransactionEntity::getId, t -> t));
+        List<TransactionEntity> ordered = new ArrayList<>(txnIds.size());
+        for (String id : txnIds) {
+            ordered.add(map.get(id));
+        }
+        return ordered;
     }
 
     private void validateCurrencies(List<TransactionEntity> transactions) {

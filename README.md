@@ -14,7 +14,7 @@ A high-performance Java and Spring Boot microservice for ingesting multi-modal t
 ```bash
 ./mvnw test
 ```
-*Executes all 120 automated tests (unit + integration + Swagger spec validation) covering all mandatory criteria, class-level logic, and edge cases.*
+*Executes all 127 automated tests (unit + integration + Swagger spec validation) covering all mandatory criteria, class-level logic, temporal checks, and edge cases.*
 
 ### Run the API in One Command (Default: File-Backed Database)
 ```bash
@@ -354,7 +354,7 @@ Run all tests in one command:
 ```bash
 ./mvnw test
 ```
-*Executes all 120 automated tests (unit + integration + OpenAPI/Swagger contract validation) covering all primary criteria, isolated class logic, and rigorous edge cases in ~4.5 seconds.*
+*Executes all 127 automated tests (unit + integration + OpenAPI/Swagger contract validation) covering all primary criteria, isolated class logic, and rigorous edge cases in ~4.5 seconds.*
 
 ### 3.1 Primary Integration Suite (`TravelApiIntegrationTest` — 12 Tests)
 | Test Name | Brief Criterion | Verified Invariant |
@@ -368,37 +368,38 @@ Run all tests in one command:
 | `test7_patchInvoicedTransactionReturns409` | Req #7 | PATCH on invoiced transaction returns 409 Conflict; totals unaltered. |
 | `test8_deleteInvoicedTransactionReturns409` | Req #8 | DELETE on invoiced transaction returns 409 Conflict; transaction remains stored. |
 | `test9_deleteInvoiceLeavesTransactionsIntact` | Req #9 | DELETE invoice removes invoice; original transactions still return 200 OK. |
-| `test10_paginationBounds` | Req #10 | Default pagination returns 50; `limit=1000` is rejected with 400 Bad Request. |
+| `test10_paginationBounds` | Req #10 | Default pagination returns 50; `limit=1000` is rejected with 400 Bad Request; `has_more` verified. |
 | `test11_unknownTypeAndFeeKind400` | Edge | Unknown transaction type or fee_kind returns 400 Bad Request. |
 | `test12_healthCheck` | Operational | `GET /health` returns 200 UP. |
 
-### 3.2 Edge Cases & Lifecycle Suite (`TravelApiEdgeCasesIntegrationTest` & `SwaggerApiIntegrationTest` — 21 Tests)
+### 3.2 Edge Cases & Lifecycle Suite (`TravelApiEdgeCasesIntegrationTest` & `SwaggerApiIntegrationTest` — 22 Tests)
 - **OpenAPI 3.0 & Swagger UI Verification:** Validates `GET /v3/api-docs` returns complete JSON schemas for all request/response models and endpoints; validates `GET /swagger-ui/index.html` loads the Swagger UI console (200 OK).
 - **Validation Edge Cases:** Missing required top-level fields (type, external_id, currency, occurred_at, total, tax_lines, fee_lines, metadata) returning `400`.
 - **Empty / Dummy Metadata:** Empty `{}` metadata, cross-type metadata mismatch (e.g., flight with hotel payload) returning `400`.
+- **Temporal & Chronological Validation:** Inverted hotel stay dates (`check_out <= check_in`), flight coupon inverted departure/arrival (`departure >= arrival`), and rail leg inverted departure/arrival (`departure >= arrival`) verified to return `400 Bad Request`.
 - **Modality Specifics:** Flight missing coupons or coupon missing flight number; Hotel missing address or 0 nights; Rail empty legs; Navan fee missing/invalid fee kind.
 - **Resource Not Found:** `GET /transactions/{non_existent_id}` returning `404`.
 - **Mutable Non-Invoiced Lifecycle:** Non-invoiced transaction `PATCH` updating totals, dates, tax/fee lines, and metadata; subsequent atomic `DELETE` returning `204`, with following `GET` returning `404`.
 - **Invoice Request Shapes & Duplicates:** Single `transaction_id` format; duplicate IDs in `transaction_ids` returning `409`; non-existent transaction returning `404`; empty request body returning `400`.
 - **Multi-Rate Tax Rollups:** Invoicing transactions with VAT 7% and VAT 19% simultaneously confirms distinct aggregation into separate rollup line items with exact mathematical precision.
 - **Invoice Unfreezing Invariant:** When an invoice is deleted, its previously invoiced transactions are unfrozen and can now be modified (`PATCH`) or deleted (`DELETE`).
-- **Arbitrary Offset Pagination Precision:** Arbitrary non-multiple offset pagination (e.g. `offset=5, limit=4`, `offset=7, limit=3`) verified to return the exact mathematical item slice.
+- **Arbitrary Offset Pagination Precision:** Arbitrary non-multiple offset pagination (e.g. `offset=5, limit=4`, `offset=7, limit=3`) verified to return the exact mathematical item slice with `has_more=true`.
 - **Concurrent Invoice PATCH Row Locking:** 10 concurrent threads racing to patch the same invoice acquire pessimistic row locks (`SELECT ... FOR UPDATE`), preventing snapshot list tearing and ensuring atomic replacements.
 - **Pagination Boundary Limits:** `limit=100` succeeds (200 OK); `limit=101` rejected (400 Bad Request) on both `/transactions` and `/invoices`.
 - **Financial Precision:** Ingestion of 3-decimal values (e.g. `100.555`, `10.124`, `5.678`) verified to strictly scale to 2 decimal places with `HALF_UP` (`100.56`, `10.12`, `5.68`).
 
-### 3.3 Isolated Class-Level Unit Test Suites (84 Tests)
-- `FlightTransactionHandlerTest`: 7 isolated tests validating coupons, flight numbers, serialization, and subtotal categories.
-- `HotelTransactionHandlerTest`: 6 isolated tests validating address fields, nights, room rates, extras, and serialization.
-- `RailTransactionHandlerTest`: 5 isolated tests validating multi-leg journeys, empty legs, and serialization.
+### 3.3 Isolated Class-Level Unit Test Suites (93 Tests)
+- `FlightTransactionHandlerTest`: 9 isolated tests validating coupons, flight numbers, ISO-8601 timestamps, inverted departure/arrival rejection, serialization, and subtotal categories.
+- `HotelTransactionHandlerTest`: 8 isolated tests validating address fields, nights, room rates, check_in/check_out dates, inverted date rejection, extras, and serialization.
+- `RailTransactionHandlerTest`: 7 isolated tests validating multi-leg journeys, empty legs, ISO-8601 timestamps, inverted departure/arrival rejection, and serialization.
 - `NavanFeeTransactionHandlerTest`: 6 isolated tests validating `trip_fee`, `agent_call_fee`, and subtotal categories.
 - `TransactionHandlerRegistryTest`: 2 tests verifying registry routing and null type rejection.
 - `TaxRollupAggregatorTest`: 5 isolated tests for multi-rate taxes, null rates, rate normalization (e.g. `0.0700` vs `0.07`), and half-up rounding.
 - `FeeRollupAggregatorTest`: 4 isolated tests for fee aggregation by name, multiple lines, and precision rounding.
 - `CreateInvoiceRequestTest`: 6 isolated tests for single vs multiple transaction ID resolution, duplicates rejection (409), and empty request rejection (400).
 - `OffsetLimitRequestTest`: 4 isolated tests for arbitrary offset/limit math, non-multiple navigation, and bounds checking.
-- `TransactionServiceTest`: 8 isolated unit tests with Mockito for fast-path duplicate collision, mutation blocking, pagination, and atomic deletion.
-- `InvoiceServiceTest`: 7 isolated unit tests with Mockito for missing transactions (404), mixed currency conflict (409), snapshot creation, pessimistic row lock patching, and cascade deletion.
+- `TransactionServiceTest`: 8 isolated unit tests with Mockito for fast-path duplicate collision, mutation blocking, `Slice<T>` pagination without `count(*)`, and atomic deletion.
+- `InvoiceServiceTest`: 7 isolated unit tests with Mockito for single-roundtrip `findAllById` loading, missing transactions (404), mixed currency conflict (409), snapshot creation, pessimistic row lock patching, and cascade deletion.
 - `InvoiceSnapshotEngineTest`: 2 isolated tests for deep copying transaction, tax, and fee entities into Memento snapshots.
 - `TransactionTypeTest` & `NavanFeeKindTest`: 18 tests for enum serialization, case-insensitive parsing, and unknown value validation.
 - `GlobalExceptionHandlerTest`: 7 tests for RFC 7807 problem details mapping and conflict response structure with root `id`.

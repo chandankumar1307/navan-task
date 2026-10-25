@@ -140,6 +140,13 @@ Travel inventory attributes vary substantially across modalities:
 2. *Against Untyped Metadata Blobs:* Pure untyped `varchar` blobs without validation lead to corrupt or incomplete database records.
 3. *The Hybrid Solution:* Relational columns are used for universal queryable attributes (`id`, `external_id`, `type`, `currency`, `total`, `occurred_at`). Type-specific metadata is validated in the application layer via strongly typed Java records and polymorphic handlers (`TransactionTypeHandler<T>`), then stored in a `metadata_json` column. This guarantees complete schema agility with zero loss of type safety or validation rigor.
 
+#### C. Temporal & Chronological Domain Validation
+To prevent corrupted or impossible travel itineraries:
+- **Hotel Stays:** Enforces strict parsing of `check_in` and `check_out` dates, requiring `check_out` to be strictly after `check_in` (`checkOut.isAfter(checkIn)`).
+- **Flight Coupons:** Enforces ISO-8601 timestamp parsing and requires coupon `departure` to be strictly before `arrival` (`arrival.isAfter(departure)`).
+- **Rail Journeys:** Enforces ISO-8601 timestamp parsing and requires journey leg `departure` to be strictly before `arrival` (`arrival.isAfter(departure)`).
+- Inverted or unparseable date formats reject the request with HTTP `400 Bad Request` and detailed RFC 7807 problem details.
+
 ---
 
 ## 4. Identity, Concurrency & Idempotency Controls
@@ -170,10 +177,24 @@ To guarantee invoice snapshot integrity when multiple concurrent modifications a
 
 *Verified via multithreaded integration test: 10 concurrent threads racing to patch the same invoice with alternating transaction sets complete without torn snapshots or data corruption.*
 
-### 4.4 Arbitrary Offset-Limit Pagination Arithmetic
+### 4.4 Deadlock Prevention via Global Lock Ordering Hierarchy
+When concurrent operations span both `transactions` and `invoices` (such as `PATCH /invoices` modifying an invoice while concurrent `PATCH /transactions` attempts to update constituent transactions), inverted lock acquisition orders can trigger database deadlocks (e.g., Operation A locks Invoice then Transaction; Operation B locks Transaction then Invoice).
+- The service enforces a strict, deterministic **Global Lock Ordering Hierarchy**:
+  $$\text{Transactions (ordered lexicographically by ID)} \prec \text{Invoices}$$
+- In `InvoiceService` (`createInvoice` and `patchInvoice`), input transaction IDs are sorted deterministically (`txnIds.stream().sorted().toList()`), and transactions are loaded in a single batched operation (`findAllById`) **before** the target invoice lock (`findByIdForUpdate`) is acquired.
+- In `TransactionService` (`patchTransaction`), only the targeted transaction row is evaluated.
+- Because every codepath across the application acquires or touches resources strictly following $\text{Transactions} \prec \text{Invoices}$, circular wait conditions in the database resource allocation graph are mathematically impossible (Dijkstra's resource ordering theorem).
+
+### 4.5 High-Volume Scalability & `count(*)` Query Elimination (`Slice<T>`)
+Under high read volume with millions of bookings, Spring Data JPA's default `Page<T>` query executes an unindexed `SELECT count(*) FROM transactions` on every single request just to compute total elements. In high-throughput systems, this `count(*)` scans the entire table or primary index, causing severe CPU and I/O degradation.
+- The service replaces full table count pagination with `Slice<T>` pagination via `findSliceBy(Pageable pageable)`.
+- Under the hood, Hibernate executes `LIMIT limit + 1 OFFSET offset`, reading at most $N + 1$ records and executing **zero** `count(*)` queries.
+- `slice.hasNext()` directly populates the `has_more` boolean in `PageResponse<T>`, enabling infinite scrolling and high-throughput pagination with minimal database overhead.
+
+### 4.6 Arbitrary Offset-Limit Pagination Arithmetic
 Standard Spring Data `PageRequest.of(pageNumber, pageSize)` assumes fixed page chunks where `pageNumber = offset / limit`. For arbitrary offsets that are not exact multiples of the limit (e.g., `offset=5, limit=10`), integer division rounds down to `page 0`, silently returning items `0–9` instead of items `5–14`.
 - The service implements a custom `OffsetLimitRequest implements Pageable` that sets the exact SQL `OFFSET` (`query.setFirstResult((int) offset)`) and `LIMIT` (`query.setMaxResults(limit)`).
-- Clients can request any arbitrary offset (`offset=7, limit=4`, etc.) and receive the exact mathematical item slice.
+- Clients can request any arbitrary offset (`offset=7, limit=4`, etc.) and receive the exact mathematical item slice without table scan overhead.
 
 ---
 
@@ -283,7 +304,7 @@ To safeguard database and application memory:
 
 The Navan Commerce Travel Inventory and Invoicing service provides a robust, production-grade microservice that guarantees absolute financial accuracy, defensive concurrency, and pragmatic architectural simplicity. 
 
-All invariants are rigorously verified by a multi-tiered test suite totaling **120 automated tests** runnable in a single command (`./mvnw test`):
+All invariants are rigorously verified by a multi-tiered test suite totaling **127 automated tests** runnable in a single command (`./mvnw test`):
 - **12 Primary Criteria Integration Tests** (`TravelApiIntegrationTest`): Verifies multi-modal ingestion, 10-thread race conditions, trip invoice accuracy (685.70 EUR), snapshot immutability, mixed currency rejection, and mutation blocking.
-- **21 Edge Cases & API Contract Integration Tests** (`TravelApiEdgeCasesIntegrationTest` & `SwaggerApiIntegrationTest`): Verifies missing fields, malformed metadata, cross-type payloads, mutable non-invoiced lifecycle (`PATCH`/`DELETE`), multi-rate tax rollups (VAT 7% and VAT 19%), invoice deletion unfreezing, arbitrary non-multiple offset pagination (`offset=5, limit=4`), 10-thread concurrent invoice PATCH locking, boundary pagination (`limit=100` vs `limit=101`), half-up financial precision, and complete OpenAPI 3.0 / Swagger schema contract compliance.
-- **84 Isolated Class-Level Unit Tests**: Verifies polymorphic Strategy handlers, domain entities, rollups, request DTOs, `OffsetLimitRequest`, exception mappers, and service logic with zero external dependencies.
+- **22 Edge Cases & API Contract Integration Tests** (`TravelApiEdgeCasesIntegrationTest` & `SwaggerApiIntegrationTest`): Verifies missing fields, malformed metadata, cross-type payloads, mutable non-invoiced lifecycle (`PATCH`/`DELETE`), multi-rate tax rollups (VAT 7% and VAT 19%), invoice deletion unfreezing, arbitrary non-multiple offset pagination (`offset=5, limit=4`), temporal chronological validation (hotel, flight, rail), 10-thread concurrent invoice PATCH locking, boundary pagination (`limit=100` vs `limit=101`), half-up financial precision, and complete OpenAPI 3.0 / Swagger schema contract compliance.
+- **93 Isolated Class-Level Unit Tests**: Verifies polymorphic Strategy handlers, temporal checks, domain entities, rollups, request DTOs, `OffsetLimitRequest`, exception mappers, single-roundtrip batch transaction loading, and service logic with zero external dependencies.

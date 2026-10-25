@@ -144,4 +144,35 @@ class HotelTransactionHandlerTest {
         assertThat(deserialized.name()).isEqualTo("Hotel Mitte");
         assertThat(deserialized.address().city()).isEqualTo("London");
     }
+
+    @Test
+    @DisplayName("Rejects hotel metadata with check_out on or before check_in")
+    void testTemporalCheckOutBeforeCheckIn() {
+        HotelAddress address = new HotelAddress("12 Kingsway", "London", "GB");
+        HotelMetadata invertedDates = new HotelMetadata("Hotel Mitte", address, "2026-03-15", "2026-03-11", 1, new BigDecimal("100.00"), null);
+        JsonNode node = objectMapper.valueToTree(invertedDates);
+
+        assertThatThrownBy(() -> handler.parseAndValidateMetadata(node))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Hotel check_out date must be strictly after check_in date");
+
+        HotelMetadata sameDates = new HotelMetadata("Hotel Mitte", address, "2026-03-11", "2026-03-11", 1, new BigDecimal("100.00"), null);
+        JsonNode sameNode = objectMapper.valueToTree(sameDates);
+
+        assertThatThrownBy(() -> handler.parseAndValidateMetadata(sameNode))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Hotel check_out date must be strictly after check_in date");
+    }
+
+    @Test
+    @DisplayName("Rejects hotel metadata with malformed date strings")
+    void testMalformedDateStrings() {
+        HotelAddress address = new HotelAddress("12 Kingsway", "London", "GB");
+        HotelMetadata badDate = new HotelMetadata("Hotel Mitte", address, "not-a-date", "2026-03-11", 1, new BigDecimal("100.00"), null);
+        JsonNode node = objectMapper.valueToTree(badDate);
+
+        assertThatThrownBy(() -> handler.parseAndValidateMetadata(node))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Invalid date format for check_in or check_out");
+    }
 }
