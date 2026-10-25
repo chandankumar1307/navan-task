@@ -50,6 +50,7 @@ public class TravelApiIntegrationTest {
 
     private JsonNode seeds;
     private String baseUrl;
+    private static String tripInvoiceId;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -220,6 +221,7 @@ public class TravelApiIntegrationTest {
 
         assertThat(invoiceRes.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         JsonNode inv = invoiceRes.getBody();
+        tripInvoiceId = inv.get("id").asText();
         assertThat(inv.get("currency").asText()).isEqualTo("EUR");
         assertThat(inv.get("grand_total").asDouble()).isEqualTo(685.70);
 
@@ -254,25 +256,25 @@ public class TravelApiIntegrationTest {
     @DisplayName("4. Invoice snapshot immutability: mutating flight total in DB does not alter existing invoice")
     void test4_invoiceSnapshotImmutability() {
         TransactionEntity flight = transactionRepository.findByExternalId("flight-TXL-LHR-2026-03-11").orElseThrow();
-        var invoices = invoiceRepository.findAll();
-        assertThat(invoices).isNotEmpty();
-        String invoiceId = invoices.get(0).getId();
+        String invoiceId = tripInvoiceId != null ? tripInvoiceId : invoiceRepository.findAll().get(0).getId();
 
-        // Mutate original flight in database directly (simulating any back-channel edit)
-        flight.setTotal(new BigDecimal("999.00"));
-        transactionRepository.saveAndFlush(flight);
+        try {
+            // Mutate original flight in database directly (simulating any back-channel edit)
+            flight.setTotal(new BigDecimal("999.00"));
+            transactionRepository.saveAndFlush(flight);
 
-        // GET invoice must STILL return original 220.00 for flight and 685.70 grand total
-        ResponseEntity<JsonNode> getInv = restTemplate.getForEntity(baseUrl + "/invoices/" + invoiceId, JsonNode.class);
-        assertThat(getInv.getStatusCode()).isEqualTo(HttpStatus.OK);
-        JsonNode inv = getInv.getBody();
+            // GET invoice must STILL return original 220.00 for flight and 685.70 grand total
+            ResponseEntity<JsonNode> getInv = restTemplate.getForEntity(baseUrl + "/invoices/" + invoiceId, JsonNode.class);
+            assertThat(getInv.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode inv = getInv.getBody();
 
-        assertThat(inv.get("totals").get("flight").asDouble()).isEqualTo(220.00);
-        assertThat(inv.get("grand_total").asDouble()).isEqualTo(685.70);
-
-        // Revert flight total for subsequent tests
-        flight.setTotal(new BigDecimal("220.00"));
-        transactionRepository.saveAndFlush(flight);
+            assertThat(inv.get("totals").get("flight").asDouble()).isEqualTo(220.00);
+            assertThat(inv.get("grand_total").asDouble()).isEqualTo(685.70);
+        } finally {
+            // Revert flight total for subsequent tests
+            flight.setTotal(new BigDecimal("220.00"));
+            transactionRepository.saveAndFlush(flight);
+        }
     }
 
     // =========================================================================
@@ -470,9 +472,7 @@ public class TravelApiIntegrationTest {
     @Order(9)
     @DisplayName("9. DELETE invoice removes invoice; underlying transactions still GET")
     void test9_deleteInvoiceLeavesTransactionsIntact() {
-        var invoices = invoiceRepository.findAll();
-        assertThat(invoices).isNotEmpty();
-        String invoiceId = invoices.get(0).getId();
+        String invoiceId = tripInvoiceId != null ? tripInvoiceId : invoiceRepository.findAll().get(0).getId();
 
         // Delete invoice
         ResponseEntity<Void> deleteRes = restTemplate.exchange(

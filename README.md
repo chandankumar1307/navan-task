@@ -343,11 +343,13 @@ curl -s -i -X DELETE http://localhost:8080/invoices/<invoice_id>
 
 ## 3. Automated Test Suite Matrix
 
-Run all tests:
+Run all tests in one command:
 ```bash
 ./mvnw test
 ```
+*Executes all 111 automated tests (unit + integration) covering all primary criteria, isolated class logic, and rigorous edge cases in ~4.5 seconds.*
 
+### 3.1 Primary Integration Suite (`TravelApiIntegrationTest` — 12 Tests)
 | Test Name | Brief Criterion | Verified Invariant |
 | :--- | :--- | :--- |
 | `test1_createAndRetrieveAllSeedTypes` | Req #1 | Flight coupons, hotel address, rail legs, and fee kinds round-trip completely without schema loss. |
@@ -362,3 +364,30 @@ Run all tests:
 | `test10_paginationBounds` | Req #10 | Default pagination returns 50; `limit=1000` is rejected with 400 Bad Request. |
 | `test11_unknownTypeAndFeeKind400` | Edge | Unknown transaction type or fee_kind returns 400 Bad Request. |
 | `test12_healthCheck` | Operational | `GET /health` returns 200 UP. |
+
+### 3.2 Edge Cases & Lifecycle Suite (`TravelApiEdgeCasesIntegrationTest` — 17 Tests)
+- **Validation Edge Cases:** Missing required top-level fields (type, external_id, currency, occurred_at, total, tax_lines, fee_lines, metadata) returning `400`.
+- **Empty / Dummy Metadata:** Empty `{}` metadata, cross-type metadata mismatch (e.g., flight with hotel payload) returning `400`.
+- **Modality Specifics:** Flight missing coupons or coupon missing flight number; Hotel missing address or 0 nights; Rail empty legs; Navan fee missing/invalid fee kind.
+- **Resource Not Found:** `GET /transactions/{non_existent_id}` returning `404`.
+- **Mutable Non-Invoiced Lifecycle:** Non-invoiced transaction `PATCH` updating totals, dates, tax/fee lines, and metadata; subsequent atomic `DELETE` returning `204`, with following `GET` returning `404`.
+- **Invoice Request Shapes & Duplicates:** Single `transaction_id` format; duplicate IDs in `transaction_ids` returning `409`; non-existent transaction returning `404`; empty request body returning `400`.
+- **Multi-Rate Tax Rollups:** Invoicing transactions with VAT 7% and VAT 19% simultaneously confirms distinct aggregation into separate rollup line items with exact mathematical precision.
+- **Invoice Unfreezing Invariant:** When an invoice is deleted, its previously invoiced transactions are unfrozen and can now be modified (`PATCH`) or deleted (`DELETE`).
+- **Pagination Boundary Limits:** `limit=100` succeeds (200 OK); `limit=101` rejected (400 Bad Request) on both `/transactions` and `/invoices`.
+- **Financial Precision:** Ingestion of 3-decimal values (e.g. `100.555`, `10.124`, `5.678`) verified to strictly scale to 2 decimal places with `HALF_UP` (`100.56`, `10.12`, `5.68`).
+
+### 3.3 Isolated Class-Level Unit Test Suites (82 Tests)
+- `FlightTransactionHandlerTest`: 7 isolated tests validating coupons, flight numbers, serialization, and subtotal categories.
+- `HotelTransactionHandlerTest`: 6 isolated tests validating address fields, nights, room rates, extras, and serialization.
+- `RailTransactionHandlerTest`: 5 isolated tests validating multi-leg journeys, empty legs, and serialization.
+- `NavanFeeTransactionHandlerTest`: 6 isolated tests validating `trip_fee`, `agent_call_fee`, and subtotal categories.
+- `TransactionHandlerRegistryTest`: 2 tests verifying registry routing and null type rejection.
+- `TaxRollupAggregatorTest`: 5 isolated tests for multi-rate taxes, null rates, rate normalization (e.g. `0.0700` vs `0.07`), and half-up rounding.
+- `FeeRollupAggregatorTest`: 4 isolated tests for fee aggregation by name, multiple lines, and precision rounding.
+- `CreateInvoiceRequestTest`: 6 isolated tests for single vs multiple transaction ID resolution, duplicates rejection (409), and empty request rejection (400).
+- `TransactionServiceTest`: 8 isolated unit tests with Mockito for fast-path duplicate collision, mutation blocking, pagination, and atomic deletion.
+- `InvoiceServiceTest`: 6 isolated unit tests with Mockito for missing transactions (404), mixed currency conflict (409), snapshot creation, and cascade deletion.
+- `InvoiceSnapshotEngineTest`: 2 isolated tests for deep copying transaction, tax, and fee entities into Memento snapshots.
+- `TransactionTypeTest` & `NavanFeeKindTest`: 18 tests for enum serialization, case-insensitive parsing, and unknown value validation.
+- `GlobalExceptionHandlerTest`: 7 tests for RFC 7807 problem details mapping and conflict response structure with root `id`.
