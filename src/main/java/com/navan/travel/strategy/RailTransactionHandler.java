@@ -2,7 +2,6 @@ package com.navan.travel.strategy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navan.travel.domain.TransactionType;
-import com.navan.travel.domain.entity.TransactionEntity;
 import com.navan.travel.domain.metadata.RailMetadata;
 import com.navan.travel.web.error.BadRequestException;
 import jakarta.validation.Validator;
@@ -33,7 +32,7 @@ public class RailTransactionHandler extends AbstractTransactionHandler<RailMetad
     }
 
     @Override
-    public String getSubtotalCategory(TransactionEntity transaction, RailMetadata metadata) {
+    public String getSubtotalCategory(RailMetadata metadata) {
         return "rail";
     }
 }

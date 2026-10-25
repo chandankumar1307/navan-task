@@ -159,12 +159,32 @@ class InvoiceServiceTest {
     @DisplayName("deleteInvoice deletes invoice entity without altering original transactions")
     void testDeleteInvoiceSuccess() {
         InvoiceEntity invoice = new InvoiceEntity("inv_1", "EUR", new BigDecimal("100.00"));
-        when(invoiceRepository.findById("inv_1")).thenReturn(Optional.of(invoice));
+        when(invoiceRepository.findByIdForUpdate("inv_1")).thenReturn(Optional.of(invoice));
 
         service.deleteInvoice("inv_1");
 
         verify(invoiceRepository).delete(invoice);
         // Note: transactionRepository is not touched during invoice deletion
         verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
+    @DisplayName("patchInvoice acquires pessimistic row lock and rebuilds snapshots cleanly")
+    void testPatchInvoiceSuccess() {
+        InvoiceEntity invoice = new InvoiceEntity("inv_1", "EUR", new BigDecimal("100.00"));
+        TransactionEntity txn1 = new TransactionEntity("txn_1", "ext_1", TransactionType.FLIGHT, "EUR",
+                Instant.parse("2026-03-11T06:40:00Z"), new BigDecimal("150.00"), "{}");
+
+        when(invoiceRepository.findByIdForUpdate("inv_1")).thenReturn(Optional.of(invoice));
+        when(transactionRepository.findById("txn_1")).thenReturn(Optional.of(txn1));
+        when(invoiceRepository.saveAndFlush(any(InvoiceEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CreateInvoiceRequest request = new CreateInvoiceRequest("txn_1", null);
+        InvoiceResponse response = service.patchInvoice("inv_1", request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.id()).isEqualTo("inv_1");
+        assertThat(response.grandTotal()).isEqualByComparingTo("150.00");
+        verify(invoiceRepository).findByIdForUpdate("inv_1");
     }
 }

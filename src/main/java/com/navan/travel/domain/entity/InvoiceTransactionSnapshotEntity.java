@@ -2,6 +2,7 @@ package com.navan.travel.domain.entity;
 
 import com.navan.travel.domain.TransactionType;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,9 +40,11 @@ public class InvoiceTransactionSnapshotEntity {
     @Column(name = "metadata_json", nullable = false, columnDefinition = "TEXT")
     private String metadataJson;
 
+    @BatchSize(size = 100)
     @OneToMany(mappedBy = "snapshot", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<InvoiceTaxLineSnapshotEntity> taxLines = new ArrayList<>();
 
+    @BatchSize(size = 100)
     @OneToMany(mappedBy = "snapshot", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<InvoiceFeeLineSnapshotEntity> feeLines = new ArrayList<>();
 

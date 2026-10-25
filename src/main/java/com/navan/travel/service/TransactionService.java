@@ -116,8 +116,7 @@ public class TransactionService {
             offset = 0;
         }
 
-        int pageNumber = (int) (offset / limit);
-        Pageable pageable = PageRequest.of(pageNumber, limit, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
+        Pageable pageable = new OffsetLimitRequest(offset, limit, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
         Page<TransactionEntity> page = transactionRepository.findAll(pageable);
 
         List<TransactionResponse> items = page.getContent().stream()
@@ -201,18 +200,18 @@ public class TransactionService {
                 .toList()
                 : List.of();
 
-        return TransactionResponse.builder()
-                .id(entity.getId())
-                .type(entity.getType())
-                .externalId(entity.getExternalId())
-                .currency(entity.getCurrency())
-                .occurredAt(entity.getOccurredAt())
-                .total(entity.getTotal())
-                .taxLines(taxLines)
-                .feeLines(feeLines)
-                .metadata(metadataNode)
-                .createdAt(entity.getCreatedAt())
-                .updatedAt(entity.getUpdatedAt())
-                .build();
+        return new TransactionResponse(
+                entity.getId(),
+                entity.getType(),
+                entity.getExternalId(),
+                entity.getCurrency(),
+                entity.getOccurredAt(),
+                entity.getTotal(),
+                taxLines,
+                feeLines,
+                metadataNode,
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
+        );
     }
 }

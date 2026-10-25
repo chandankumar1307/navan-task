@@ -31,6 +31,7 @@ data/
 .settings/
 .project
 .classpath
+.cursor/
 
 # Environment and secrets
 .env

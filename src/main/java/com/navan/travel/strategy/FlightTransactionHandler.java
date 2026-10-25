@@ -2,7 +2,6 @@ package com.navan.travel.strategy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navan.travel.domain.TransactionType;
-import com.navan.travel.domain.entity.TransactionEntity;
 import com.navan.travel.domain.metadata.FlightCoupon;
 import com.navan.travel.domain.metadata.FlightMetadata;
 import com.navan.travel.web.error.BadRequestException;
@@ -39,7 +38,7 @@ public class FlightTransactionHandler extends AbstractTransactionHandler<FlightM
     }
 
     @Override
-    public String getSubtotalCategory(TransactionEntity transaction, FlightMetadata metadata) {
+    public String getSubtotalCategory(FlightMetadata metadata) {
         return "flight";
     }
 }

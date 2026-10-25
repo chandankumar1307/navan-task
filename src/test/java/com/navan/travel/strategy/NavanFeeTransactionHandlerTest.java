@@ -41,9 +41,9 @@ class NavanFeeTransactionHandlerTest {
         NavanFeeMetadata tripFee = new NavanFeeMetadata(NavanFeeKind.TRIP_FEE, "Trip fee", "ref-1");
         NavanFeeMetadata agentFee = new NavanFeeMetadata(NavanFeeKind.AGENT_CALL_FEE, "Support call", "ref-2");
 
-        assertThat(handler.getSubtotalCategory(null, tripFee)).isEqualTo("trip_fee");
-        assertThat(handler.getSubtotalCategory(null, agentFee)).isEqualTo("agent_call_fee");
-        assertThat(handler.getSubtotalCategory(null, null)).isEqualTo("navan_fee");
+        assertThat(handler.getSubtotalCategory(tripFee)).isEqualTo("trip_fee");
+        assertThat(handler.getSubtotalCategory(agentFee)).isEqualTo("agent_call_fee");
+        assertThat(handler.getSubtotalCategory(null)).isEqualTo("navan_fee");
     }
 
     @Test

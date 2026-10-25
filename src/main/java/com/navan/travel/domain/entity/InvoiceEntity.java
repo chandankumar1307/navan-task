@@ -1,6 +1,7 @@
 package com.navan.travel.domain.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ public class InvoiceEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @BatchSize(size = 50)
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<InvoiceTransactionSnapshotEntity> snapshots = new ArrayList<>();
 

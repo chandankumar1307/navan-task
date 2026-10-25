@@ -36,7 +36,7 @@ class FlightTransactionHandlerTest {
     void testTypeAndClass() {
         assertThat(handler.getType()).isEqualTo(TransactionType.FLIGHT);
         assertThat(handler.getMetadataClass()).isEqualTo(FlightMetadata.class);
-        assertThat(handler.getSubtotalCategory(null, null)).isEqualTo("flight");
+        assertThat(handler.getSubtotalCategory(null)).isEqualTo("flight");
     }
 
     @Test

@@ -35,7 +35,7 @@ class RailTransactionHandlerTest {
     void testTypeAndClass() {
         assertThat(handler.getType()).isEqualTo(TransactionType.RAIL);
         assertThat(handler.getMetadataClass()).isEqualTo(RailMetadata.class);
-        assertThat(handler.getSubtotalCategory(null, null)).isEqualTo("rail");
+        assertThat(handler.getSubtotalCategory(null)).isEqualTo("rail");
     }
 
     @Test

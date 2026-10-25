@@ -2,7 +2,6 @@ package com.navan.travel.strategy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navan.travel.domain.TransactionType;
-import com.navan.travel.domain.entity.TransactionEntity;
 import com.navan.travel.domain.metadata.HotelMetadata;
 import com.navan.travel.web.error.BadRequestException;
 import jakarta.validation.Validator;
@@ -33,7 +32,7 @@ public class HotelTransactionHandler extends AbstractTransactionHandler<HotelMet
     }
 
     @Override
-    public String getSubtotalCategory(TransactionEntity transaction, HotelMetadata metadata) {
+    public String getSubtotalCategory(HotelMetadata metadata) {
         return "hotel";
     }
 }

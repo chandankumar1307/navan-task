@@ -95,8 +95,7 @@ public class InvoiceService {
             offset = 0;
         }
 
-        int pageNumber = (int) (offset / limit);
-        Pageable pageable = PageRequest.of(pageNumber, limit, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
+        Pageable pageable = new OffsetLimitRequest(offset, limit, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
         Page<InvoiceEntity> page = invoiceRepository.findAll(pageable);
 
         List<InvoiceResponse> items = page.getContent().stream()
@@ -108,7 +107,7 @@ public class InvoiceService {
 
     @Transactional
     public InvoiceResponse patchInvoice(String id, CreateInvoiceRequest request) {
-        InvoiceEntity invoice = invoiceRepository.findById(id)
+        InvoiceEntity invoice = invoiceRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
 
         List<String> txnIds = request.resolveTransactionIds();
@@ -129,7 +128,7 @@ public class InvoiceService {
 
     @Transactional
     public void deleteInvoice(String id) {
-        InvoiceEntity invoice = invoiceRepository.findById(id)
+        InvoiceEntity invoice = invoiceRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
         invoiceRepository.delete(invoice);
     }
@@ -178,7 +177,7 @@ public class InvoiceService {
                 // Resolve subtotal category using Strategy handler
                 TransactionTypeHandler<TransactionMetadata> handler = handlerRegistry.getHandler(snapshot.getTransactionType());
                 TransactionMetadata meta = handler.deserializeMetadata(snapshot.getMetadataJson());
-                String category = handler.getSubtotalCategory(null, meta);
+                String category = handler.getSubtotalCategory(meta);
 
                 totalsMap.merge(category, snapshot.getTotal(), BigDecimal::add);
                 calculatedGrandTotal = calculatedGrandTotal.add(snapshot.getTotal());
@@ -220,16 +219,16 @@ public class InvoiceService {
         List<TaxRollupItem> taxRollup = taxRollupAggregator.aggregate(allTaxes);
         List<FeeRollupItem> feeRollup = feeRollupAggregator.aggregate(allFees);
 
-        return InvoiceResponse.builder()
-                .id(invoice.getId())
-                .currency(invoice.getCurrency())
-                .grandTotal(invoice.getGrandTotal().setScale(2, RoundingMode.HALF_UP))
-                .totals(formattedTotals)
-                .taxRollup(taxRollup)
-                .feeRollup(feeRollup)
-                .transactions(snapshotDtos)
-                .createdAt(invoice.getCreatedAt())
-                .updatedAt(invoice.getUpdatedAt())
-                .build();
+        return new InvoiceResponse(
+                invoice.getId(),
+                invoice.getCurrency(),
+                invoice.getGrandTotal().setScale(2, RoundingMode.HALF_UP),
+                formattedTotals,
+                taxRollup,
+                feeRollup,
+                snapshotDtos,
+                invoice.getCreatedAt(),
+                invoice.getUpdatedAt()
+        );
     }
 }

@@ -10,7 +10,7 @@ The Navan Commerce Travel Inventory and Invoicing service is designed to ingest 
 The architecture strictly adheres to three fundamental enterprise engineering tenets:
 1. **Financial Integrity & Zero Drift:** Money is represented strictly with fixed-point decimal arithmetic (`BigDecimal` scale 2). Invoices are frozen snapshots using the Memento pattern—once created, changes to underlying bookings can never alter invoiced amounts.
 2. **Defensive Concurrency & Idempotency:** Duplicate transactions are rejected at the database engine level via unique constraints. Concurrent duplicate writes are resolved deterministically without external distributed locks or message brokers.
-3. **High-Throughput Operational Simplicity (The "Ponytail" Principle):** Built with pure Spring Boot 3.4 and Java 21/25, the system requires no external dependencies for local evaluation (file-backed disk SQL database), while providing full PostgreSQL 16 compatibility for staging environments.
+3. **High-Throughput Operational Simplicity (Zero-Friction Pragmatism):** Built with pure Spring Boot 3.4 and Java 21/25, the system requires no external dependencies for local evaluation (file-backed disk SQL database), while providing full PostgreSQL 16 compatibility for staging environments.
 
 ---
 
@@ -161,6 +161,20 @@ When multiple concurrent requests submit the same `external_id` simultaneously:
 
 *Verified via multithreaded integration test: 10 concurrent threads executing simultaneous creates result in 1 HTTP 201 and 9 HTTP 409 responses, with exactly 1 row persisted.*
 
+### 4.3 Pessimistic Row Locking on Invoice Mutations (`PATCH /invoices/{id}`)
+To guarantee invoice snapshot integrity when multiple concurrent modifications are submitted for the same invoice:
+- The query method `InvoiceRepository.findByIdForUpdate(id)` applies an explicit `@Lock(LockModeType.PESSIMISTIC_WRITE)`.
+- At the database level, this executes `SELECT ... FROM invoices WHERE id = ? FOR UPDATE`.
+- The database engine places an exclusive row-level lock on the target invoice record. Any concurrent `PATCH` or `DELETE` transaction on that invoice is blocked until the active transaction commits.
+- This prevents race conditions where interleaved snapshot clears and inserts could tear the snapshot collection, duplicate snapshots, or orphan child lines.
+
+*Verified via multithreaded integration test: 10 concurrent threads racing to patch the same invoice with alternating transaction sets complete without torn snapshots or data corruption.*
+
+### 4.4 Arbitrary Offset-Limit Pagination Arithmetic
+Standard Spring Data `PageRequest.of(pageNumber, pageSize)` assumes fixed page chunks where `pageNumber = offset / limit`. For arbitrary offsets that are not exact multiples of the limit (e.g., `offset=5, limit=10`), integer division rounds down to `page 0`, silently returning items `0–9` instead of items `5–14`.
+- The service implements a custom `OffsetLimitRequest implements Pageable` that sets the exact SQL `OFFSET` (`query.setFirstResult((int) offset)`) and `LIMIT` (`query.setMaxResults(limit)`).
+- Clients can request any arbitrary offset (`offset=7, limit=4`, etc.) and receive the exact mathematical item slice.
+
 ---
 
 ## 5. Invoice Snapshotting & Immutability (The Memento Pattern)
@@ -201,6 +215,12 @@ To prevent financial divergence:
 - **Fee Rollup:** Groups fee lines across all invoiced transactions by `name` and sums amounts.
 - **Totals Breakdown:** Computes categorized subtotals (`flight`, `hotel`, `rail`, `trip_fee`, `agent_call_fee`) and the invoice `grand_total`.
 - **Currency Validation:** Cross-currency invoicing is strictly prohibited. Submitting transactions with mixed currencies (e.g., EUR and USD) triggers an immediate `409 Conflict`.
+
+### 5.4 High-Throughput Batch Fetching (N+1 Query Elimination)
+To prevent N+1 query degradation when rendering invoices and transactions:
+- When listing invoices via `GET /invoices`, naive lazy loading would fire separate SQL queries for each invoice's snapshots, tax lines, and fee lines (e.g. 50 invoices × 4 snapshots × 2 lines = 450+ queries).
+- The service configures Hibernate batch fetching globally (`hibernate.default_batch_fetch_size: 100`) and explicitly on collections via `@BatchSize(size = 50)` on `InvoiceEntity.snapshots` and `@BatchSize(size = 100)` on snapshot tax/fee lines and transaction tax/fee lines.
+- When any child collection is accessed, Hibernate executes a single batched query using `WHERE parent_id IN (?, ?, ?, ...)`, reducing hundreds of round trips to just 4 bulk queries total.
 
 ---
 
@@ -255,6 +275,7 @@ To safeguard database and application memory:
    - Implement a new `TransactionTypeHandler<CarRentalMetadata>`.
    - The strategy handler automatically self-registers in `TransactionHandlerRegistry` with zero changes required to database tables or core invoice engines.
 2. **Read/Write Separation:** Under higher scale, read operations (`GET /transactions`, `GET /invoices`) can be directed to PostgreSQL read replicas using Spring's `AbstractRoutingDataSource`.
+3. **Zero Schema Drift Management:** In production/staging environments, `spring.jpa.hibernate.ddl-auto=update` introduces severe schema drift and table locking risks. The service employs an explicit ANSI DDL schema (`src/main/resources/schema.sql`) executed on startup (`spring.sql.init.mode=always`), paired with strict Hibernate validation (`spring.jpa.hibernate.ddl-auto=validate`) in the staging profile. Any mismatch aborts deployment immediately, ensuring the database remains 100% compliant with entity contracts.
 
 ---
 
@@ -262,7 +283,7 @@ To safeguard database and application memory:
 
 The Navan Commerce Travel Inventory and Invoicing service provides a robust, production-grade microservice that guarantees absolute financial accuracy, defensive concurrency, and pragmatic architectural simplicity. 
 
-All invariants are rigorously verified by a multi-tiered test suite totaling **113 automated tests** runnable in a single command (`./mvnw test`):
+All invariants are rigorously verified by a multi-tiered test suite totaling **120 automated tests** runnable in a single command (`./mvnw test`):
 - **12 Primary Criteria Integration Tests** (`TravelApiIntegrationTest`): Verifies multi-modal ingestion, 10-thread race conditions, trip invoice accuracy (685.70 EUR), snapshot immutability, mixed currency rejection, and mutation blocking.
-- **19 Edge Cases & API Contract Integration Tests** (`TravelApiEdgeCasesIntegrationTest` & `SwaggerApiIntegrationTest`): Verifies missing fields, malformed metadata, cross-type payloads, mutable non-invoiced lifecycle (`PATCH`/`DELETE`), multi-rate tax rollups (VAT 7% and VAT 19%), invoice deletion unfreezing, boundary pagination (`limit=100` vs `limit=101`), half-up financial precision, and complete OpenAPI 3.0 / Swagger schema contract compliance.
-- **82 Isolated Class-Level Unit Tests**: Verifies polymorphic Strategy handlers, domain entities, rollups, request DTOs, exception mappers, and service logic with zero external dependencies.
+- **21 Edge Cases & API Contract Integration Tests** (`TravelApiEdgeCasesIntegrationTest` & `SwaggerApiIntegrationTest`): Verifies missing fields, malformed metadata, cross-type payloads, mutable non-invoiced lifecycle (`PATCH`/`DELETE`), multi-rate tax rollups (VAT 7% and VAT 19%), invoice deletion unfreezing, arbitrary non-multiple offset pagination (`offset=5, limit=4`), 10-thread concurrent invoice PATCH locking, boundary pagination (`limit=100` vs `limit=101`), half-up financial precision, and complete OpenAPI 3.0 / Swagger schema contract compliance.
+- **84 Isolated Class-Level Unit Tests**: Verifies polymorphic Strategy handlers, domain entities, rollups, request DTOs, `OffsetLimitRequest`, exception mappers, and service logic with zero external dependencies.

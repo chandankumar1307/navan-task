@@ -661,4 +661,142 @@ public class TravelApiEdgeCasesIntegrationTest {
         assertThat(body.get("tax_lines").get(0).get("amount").asDouble()).isEqualTo(10.12);
         assertThat(body.get("fee_lines").get(0).get("amount").asDouble()).isEqualTo(5.68);
     }
+
+    @Test
+    @DisplayName("Arbitrary non-multiple offset pagination (e.g. offset=5, limit=4) returns exact item slice")
+    void testArbitraryOffsetPaginationPrecision() {
+        // Create 12 transactions with identifiable external IDs
+        for (int i = 0; i < 12; i++) {
+            Map<String, Object> payload = Map.of(
+                    "type", "rail",
+                    "external_id", randomExternalId("page-slice-" + i),
+                    "currency", "EUR",
+                    "occurred_at", "2026-03-12T10:00:00Z",
+                    "total", 50.00,
+                    "tax_lines", List.of(),
+                    "fee_lines", List.of(),
+                    "metadata", Map.of(
+                            "operator", "Eurostar",
+                            "legs", List.of(
+                                    Map.of("origin", "London", "destination", "Paris", "departure", "2026-03-12T10:00:00Z", "arrival", "2026-03-12T12:00:00Z")
+                            )
+                    )
+            );
+            ResponseEntity<JsonNode> postRes = restTemplate.postForEntity(baseUrl + "/transactions", new HttpEntity<>(payload, jsonHeaders()), JsonNode.class);
+            assertThat(postRes.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        }
+
+        // Fetch full baseline (all transactions currently in DB)
+        ResponseEntity<JsonNode> fullRes = restTemplate.getForEntity(baseUrl + "/transactions?offset=0&limit=100", JsonNode.class);
+        assertThat(fullRes.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode allItems = fullRes.getBody().get("items");
+        assertThat(allItems.size()).isGreaterThanOrEqualTo(12);
+
+        // Fetch slice offset=5, limit=4
+        ResponseEntity<JsonNode> sliceRes = restTemplate.getForEntity(baseUrl + "/transactions?offset=5&limit=4", JsonNode.class);
+        assertThat(sliceRes.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode sliceItems = sliceRes.getBody().get("items");
+        assertThat(sliceItems.size()).isEqualTo(4);
+
+        // Verify that the 4 items match baseline items at indices 5, 6, 7, 8 exactly
+        for (int i = 0; i < 4; i++) {
+            String expectedId = allItems.get(5 + i).get("id").asText();
+            String actualId = sliceItems.get(i).get("id").asText();
+            assertThat(actualId).as("Mismatch at slice index " + i).isEqualTo(expectedId);
+        }
+
+        // Fetch another slice: offset=7, limit=3
+        ResponseEntity<JsonNode> slice2Res = restTemplate.getForEntity(baseUrl + "/transactions?offset=7&limit=3", JsonNode.class);
+        assertThat(slice2Res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode slice2Items = slice2Res.getBody().get("items");
+        assertThat(slice2Items.size()).isEqualTo(3);
+
+        for (int i = 0; i < 3; i++) {
+            String expectedId = allItems.get(7 + i).get("id").asText();
+            String actualId = slice2Items.get(i).get("id").asText();
+            assertThat(actualId).as("Mismatch at slice 2 index " + i).isEqualTo(expectedId);
+        }
+    }
+
+    @Test
+    @DisplayName("Concurrent PATCH on same invoice acquires row lock and eliminates snapshot tearing")
+    void testConcurrentPatchInvoiceRaceWithRowLock() throws Exception {
+        // Create 4 distinct transactions
+        String[] txnIds = new String[4];
+        for (int i = 0; i < 4; i++) {
+            Map<String, Object> payload = Map.of(
+                    "type", "navan_fee",
+                    "external_id", randomExternalId("concurrent-inv-patch-" + i),
+                    "currency", "EUR",
+                    "occurred_at", "2026-03-12T10:00:00Z",
+                    "total", 25.00 * (i + 1),
+                    "tax_lines", List.of(),
+                    "fee_lines", List.of(),
+                    "metadata", Map.of("fee_kind", "trip_fee")
+            );
+            ResponseEntity<JsonNode> res = restTemplate.postForEntity(baseUrl + "/transactions", new HttpEntity<>(payload, jsonHeaders()), JsonNode.class);
+            txnIds[i] = res.getBody().get("id").asText();
+        }
+
+        // Create initial invoice with [txnIds[0], txnIds[1]]
+        Map<String, Object> createInv = Map.of("transaction_ids", List.of(txnIds[0], txnIds[1]));
+        ResponseEntity<JsonNode> invRes = restTemplate.postForEntity(baseUrl + "/invoices", new HttpEntity<>(createInv, jsonHeaders()), JsonNode.class);
+        assertThat(invRes.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String invoiceId = invRes.getBody().get("id").asText();
+
+        // 10 concurrent threads racing to patch the invoice with alternating sets
+        int numThreads = 10;
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(numThreads);
+        java.util.concurrent.CountDownLatch readyLatch = new java.util.concurrent.CountDownLatch(numThreads);
+        java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger successCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        List<List<String>> sets = List.of(
+                List.of(txnIds[0], txnIds[2]), // Set A: 25 + 75 = 100.00
+                List.of(txnIds[1], txnIds[3])  // Set B: 50 + 100 = 150.00
+        );
+
+        for (int i = 0; i < numThreads; i++) {
+            final int threadIdx = i;
+            executor.submit(() -> {
+                readyLatch.countDown();
+                try {
+                    startLatch.await();
+                    List<String> targetSet = sets.get(threadIdx % 2);
+                    Map<String, Object> patchPayload = Map.of("transaction_ids", targetSet);
+                    HttpHeaders headers = jsonHeaders();
+                    HttpEntity<Map<String, Object>> entity = new HttpEntity<>(patchPayload, headers);
+                    ResponseEntity<JsonNode> patchRes = restTemplate.exchange(
+                            baseUrl + "/invoices/" + invoiceId,
+                            HttpMethod.PATCH,
+                            entity,
+                            JsonNode.class
+                    );
+                    if (patchRes.getStatusCode().is2xxSuccessful()) {
+                        successCount.incrementAndGet();
+                    }
+                } catch (Exception ignored) {
+                }
+            });
+        }
+
+        readyLatch.await();
+        startLatch.countDown();
+        executor.shutdown();
+        executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertThat(successCount.get()).isEqualTo(numThreads);
+
+        // Verify final state of invoice has no torn snapshots
+        ResponseEntity<JsonNode> finalInvRes = restTemplate.getForEntity(baseUrl + "/invoices/" + invoiceId, JsonNode.class);
+        assertThat(finalInvRes.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode finalBody = finalInvRes.getBody();
+
+        // Snapshots must be exactly 2 (never torn or accumulated)
+        assertThat(finalBody.get("transactions").size()).isEqualTo(2);
+
+        // Grand total must match exactly one of the valid sets (100.00 or 150.00)
+        double grandTotal = finalBody.get("grand_total").asDouble();
+        assertThat(grandTotal).isIn(100.00, 150.00);
+    }
 }

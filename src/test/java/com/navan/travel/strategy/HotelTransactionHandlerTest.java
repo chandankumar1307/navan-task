@@ -37,7 +37,7 @@ class HotelTransactionHandlerTest {
     void testTypeAndClass() {
         assertThat(handler.getType()).isEqualTo(TransactionType.HOTEL);
         assertThat(handler.getMetadataClass()).isEqualTo(HotelMetadata.class);
-        assertThat(handler.getSubtotalCategory(null, null)).isEqualTo("hotel");
+        assertThat(handler.getSubtotalCategory(null)).isEqualTo("hotel");
     }
 
     @Test

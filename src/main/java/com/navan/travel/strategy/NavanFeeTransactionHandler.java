@@ -2,7 +2,6 @@ package com.navan.travel.strategy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navan.travel.domain.TransactionType;
-import com.navan.travel.domain.entity.TransactionEntity;
 import com.navan.travel.domain.metadata.NavanFeeMetadata;
 import com.navan.travel.web.error.BadRequestException;
 import jakarta.validation.Validator;
@@ -33,7 +32,7 @@ public class NavanFeeTransactionHandler extends AbstractTransactionHandler<Navan
     }
 
     @Override
-    public String getSubtotalCategory(TransactionEntity transaction, NavanFeeMetadata metadata) {
+    public String getSubtotalCategory(NavanFeeMetadata metadata) {
         if (metadata != null && metadata.feeKind() != null) {
             return metadata.feeKind().getValue();
         }
