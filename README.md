@@ -14,7 +14,7 @@ A high-performance Java and Spring Boot microservice for ingesting multi-modal t
 ```bash
 ./mvnw test
 ```
-*Executes all 12 automated integration tests covering the 10 mandatory evaluation criteria, including the multithreaded concurrent race test.*
+*Executes all 113 automated tests (unit + integration + Swagger spec validation) covering all mandatory criteria, class-level logic, and edge cases.*
 
 ### Run the API in One Command (Default: File-Backed Database)
 ```bash
