@@ -38,6 +38,13 @@ With the application running on `http://localhost:8080`, execute the end-to-end 
 ```
 *Executes all required curl scenarios sequentially with color-coded verification.*
 
+### Interactive Swagger UI & OpenAPI 3.0 Documentation
+Once the service is started, access the complete interactive API specification and UI in your browser:
+- **Swagger UI Interactive Console:** [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
+- **Raw OpenAPI 3.0 JSON Specification:** [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+
+*Contains detailed schemas, field-level constraints, request/response models, and live "Try it out" capabilities for all multi-modal transaction and invoice endpoints.*
+
 ---
 
 ## 2. API Documentation & Example Curls
@@ -347,7 +354,7 @@ Run all tests in one command:
 ```bash
 ./mvnw test
 ```
-*Executes all 111 automated tests (unit + integration) covering all primary criteria, isolated class logic, and rigorous edge cases in ~4.5 seconds.*
+*Executes all 113 automated tests (unit + integration + OpenAPI/Swagger contract validation) covering all primary criteria, isolated class logic, and rigorous edge cases in ~4.5 seconds.*
 
 ### 3.1 Primary Integration Suite (`TravelApiIntegrationTest` — 12 Tests)
 | Test Name | Brief Criterion | Verified Invariant |
@@ -365,7 +372,8 @@ Run all tests in one command:
 | `test11_unknownTypeAndFeeKind400` | Edge | Unknown transaction type or fee_kind returns 400 Bad Request. |
 | `test12_healthCheck` | Operational | `GET /health` returns 200 UP. |
 
-### 3.2 Edge Cases & Lifecycle Suite (`TravelApiEdgeCasesIntegrationTest` — 17 Tests)
+### 3.2 Edge Cases & Lifecycle Suite (`TravelApiEdgeCasesIntegrationTest` & `SwaggerApiIntegrationTest` — 19 Tests)
+- **OpenAPI 3.0 & Swagger UI Verification:** Validates `GET /v3/api-docs` returns complete JSON schemas for all request/response models and endpoints; validates `GET /swagger-ui/index.html` loads the Swagger UI console (200 OK).
 - **Validation Edge Cases:** Missing required top-level fields (type, external_id, currency, occurred_at, total, tax_lines, fee_lines, metadata) returning `400`.
 - **Empty / Dummy Metadata:** Empty `{}` metadata, cross-type metadata mismatch (e.g., flight with hotel payload) returning `400`.
 - **Modality Specifics:** Flight missing coupons or coupon missing flight number; Hotel missing address or 0 nights; Rail empty legs; Navan fee missing/invalid fee kind.
