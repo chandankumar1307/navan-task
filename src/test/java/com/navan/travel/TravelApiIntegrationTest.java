@@ -234,15 +234,24 @@ public class TravelApiIntegrationTest {
         assertThat(totals.get("agent_call_fee").asDouble()).isEqualTo(15.00);
         assertThat(totals.get("grand_total").asDouble()).isEqualTo(685.70);
 
-        // Tax Rollup check
+        // Tax Rollup check matching expected-invoice.json
         JsonNode taxRollup = inv.get("tax_rollup");
         assertThat(taxRollup.isArray()).isTrue();
         assertThat(taxRollup.size()).isEqualTo(2);
+        assertThat(taxRollup.get(0).get("name").asText()).isEqualTo("Airport tax");
+        assertThat(taxRollup.get(0).get("amount").asDouble()).isEqualTo(15.00);
+        assertThat(taxRollup.get(1).get("name").asText()).isEqualTo("VAT");
+        assertThat(taxRollup.get(1).get("rate").asDouble()).isEqualTo(0.07);
+        assertThat(taxRollup.get(1).get("amount").asDouble()).isEqualTo(21.70);
 
-        // Fee Rollup check
+        // Fee Rollup check matching expected-invoice.json
         JsonNode feeRollup = inv.get("fee_rollup");
         assertThat(feeRollup.isArray()).isTrue();
         assertThat(feeRollup.size()).isEqualTo(2);
+        assertThat(feeRollup.get(0).get("name").asText()).isEqualTo("YQ");
+        assertThat(feeRollup.get(0).get("amount").asDouble()).isEqualTo(25.00);
+        assertThat(feeRollup.get(1).get("name").asText()).isEqualTo("Booking fee");
+        assertThat(feeRollup.get(1).get("amount").asDouble()).isEqualTo(4.00);
 
         // Snapshot line count
         assertThat(inv.get("transactions").size()).isEqualTo(5);
