@@ -3,6 +3,7 @@ package com.navan.travel.strategy;
 import com.navan.travel.domain.TransactionType;
 import com.navan.travel.domain.metadata.TransactionMetadata;
 import com.navan.travel.web.error.BadRequestException;
+import com.navan.travel.web.error.ErrorCode;
 import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;
@@ -23,11 +24,11 @@ public class TransactionHandlerRegistry {
     @SuppressWarnings("unchecked")
     public <T extends TransactionMetadata> TransactionTypeHandler<T> getHandler(TransactionType type) {
         if (type == null) {
-            throw new BadRequestException("transaction type is required");
+            throw new BadRequestException(ErrorCode.TRANSACTION_TYPE_REQUIRED);
         }
         TransactionTypeHandler<?> handler = handlerMap.get(type);
         if (handler == null) {
-            throw new BadRequestException("No handler registered for transaction type: " + type.getValue());
+            throw new BadRequestException(ErrorCode.NO_HANDLER_FOR_TYPE, type.getValue());
         }
         return (TransactionTypeHandler<T>) handler;
     }

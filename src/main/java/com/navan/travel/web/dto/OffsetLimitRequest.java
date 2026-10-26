@@ -1,5 +1,6 @@
 package com.navan.travel.web.dto;
 
+import com.navan.travel.web.error.ErrorCode;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
@@ -18,10 +19,10 @@ public class OffsetLimitRequest implements Pageable, Serializable {
 
     public OffsetLimitRequest(long offset, int limit, Sort sort) {
         if (offset < 0) {
-            throw new IllegalArgumentException("Offset must not be negative");
+            throw new IllegalArgumentException(ErrorCode.OFFSET_NEGATIVE.getMessageTemplate());
         }
         if (limit < 1) {
-            throw new IllegalArgumentException("Limit must be greater than zero");
+            throw new IllegalArgumentException(ErrorCode.LIMIT_NON_POSITIVE.getMessageTemplate());
         }
         this.offset = offset;
         this.limit = limit;

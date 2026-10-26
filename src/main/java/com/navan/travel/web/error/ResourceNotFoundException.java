@@ -1,8 +1,12 @@
 package com.navan.travel.web.error;
 
-public class ResourceNotFoundException extends RuntimeException {
+public class ResourceNotFoundException extends NavanBaseException {
 
-    public ResourceNotFoundException(String message) {
-        super(message);
+    public ResourceNotFoundException(ErrorCode errorCode, Object... args) {
+        super(errorCode, args);
+    }
+
+    public ResourceNotFoundException(String customMessage) {
+        super(ErrorCode.RESOURCE_NOT_FOUND, customMessage);
     }
 }

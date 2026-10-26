@@ -2,6 +2,7 @@ package com.navan.travel.domain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.navan.travel.web.error.ErrorCode;
 
 public enum TransactionType {
     FLIGHT("flight"),
@@ -30,6 +31,6 @@ public enum TransactionType {
                 return type;
             }
         }
-        throw new IllegalArgumentException("Unknown transaction type: " + value);
+        throw new IllegalArgumentException(ErrorCode.UNKNOWN_TRANSACTION_TYPE.formatMessage(value));
     }
 }

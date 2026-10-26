@@ -69,7 +69,7 @@ public class GlobalExceptionHandler {
         body.put("type", "about:blank");
         body.put("title", "Conflict");
         body.put("status", HttpStatus.CONFLICT.value());
-        body.put("detail", "Transaction with this external_id already exists.");
+        body.put("detail", ErrorCode.TRANSACTION_EXTERNAL_ID_DUPLICATE.getMessageTemplate());
 
         String externalId = (String) request.getAttribute("external_id");
         if (externalId != null) {

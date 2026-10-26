@@ -5,6 +5,7 @@ import com.navan.travel.domain.TransactionType;
 import com.navan.travel.domain.metadata.FlightCoupon;
 import com.navan.travel.domain.metadata.FlightMetadata;
 import com.navan.travel.web.error.BadRequestException;
+import com.navan.travel.web.error.ErrorCode;
 import jakarta.validation.Validator;
 import org.springframework.stereotype.Component;
 
@@ -31,11 +32,11 @@ public class FlightTransactionHandler extends AbstractTransactionHandler<FlightM
     @Override
     protected void validateCustom(FlightMetadata metadata) {
         if (metadata.coupons() == null || metadata.coupons().isEmpty()) {
-            throw new BadRequestException("Flight metadata must include at least one coupon");
+            throw new BadRequestException(ErrorCode.FLIGHT_COUPONS_REQUIRED);
         }
         for (FlightCoupon coupon : metadata.coupons()) {
             if (coupon.flightNumber() == null || coupon.flightNumber().isBlank()) {
-                throw new BadRequestException("Flight coupon must include flight_number");
+                throw new BadRequestException(ErrorCode.FLIGHT_COUPON_NUMBER_REQUIRED);
             }
             Instant departure;
             Instant arrival;
@@ -43,10 +44,10 @@ public class FlightTransactionHandler extends AbstractTransactionHandler<FlightM
                 departure = Instant.parse(coupon.departure());
                 arrival = Instant.parse(coupon.arrival());
             } catch (DateTimeParseException e) {
-                throw new BadRequestException("Invalid timestamp for flight coupon departure or arrival (expected ISO-8601)");
+                throw new BadRequestException(ErrorCode.FLIGHT_TIMESTAMP_INVALID);
             }
             if (!arrival.isAfter(departure)) {
-                throw new BadRequestException("Flight coupon departure must be strictly before arrival");
+                throw new BadRequestException(ErrorCode.FLIGHT_DEPARTURE_AFTER_ARRIVAL);
             }
         }
     }

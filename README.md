@@ -14,7 +14,7 @@ A high-performance Java and Spring Boot microservice for ingesting multi-modal t
 ```bash
 ./mvnw test
 ```
-*Executes all 127 automated tests (unit + integration + Swagger spec validation) covering all mandatory criteria, class-level logic, temporal checks, and edge cases.*
+*Executes all 134 automated tests (unit + integration + Swagger spec validation) covering all mandatory criteria, class-level logic, temporal checks, error code resolution, and edge cases.*
 
 ### Run the API in One Command (Default: File-Backed Database)
 ```bash
@@ -354,7 +354,7 @@ Run all tests in one command:
 ```bash
 ./mvnw test
 ```
-*Executes all 127 automated tests (unit + integration + OpenAPI/Swagger contract validation) covering all primary criteria, isolated class logic, and rigorous edge cases in ~4.5 seconds.*
+*Executes all 134 automated tests (unit + integration + OpenAPI/Swagger contract validation) covering all primary criteria, isolated class logic, and rigorous edge cases in ~4.5 seconds.*
 
 ### 3.1 Primary Integration Suite (`TravelApiIntegrationTest` — 12 Tests)
 | Test Name | Brief Criterion | Verified Invariant |
@@ -388,7 +388,7 @@ Run all tests in one command:
 - **Pagination Boundary Limits:** `limit=100` succeeds (200 OK); `limit=101` rejected (400 Bad Request) on both `/transactions` and `/invoices`.
 - **Financial Precision:** Ingestion of 3-decimal values (e.g. `100.555`, `10.124`, `5.678`) verified to strictly scale to 2 decimal places with `HALF_UP` (`100.56`, `10.12`, `5.68`).
 
-### 3.3 Isolated Class-Level Unit Test Suites (93 Tests)
+### 3.3 Isolated Class-Level Unit Test Suites (100 Tests)
 - `FlightTransactionHandlerTest`: 9 isolated tests validating coupons, flight numbers, ISO-8601 timestamps, inverted departure/arrival rejection, serialization, and subtotal categories.
 - `HotelTransactionHandlerTest`: 8 isolated tests validating address fields, nights, room rates, check_in/check_out dates, inverted date rejection, extras, and serialization.
 - `RailTransactionHandlerTest`: 7 isolated tests validating multi-leg journeys, empty legs, ISO-8601 timestamps, inverted departure/arrival rejection, and serialization.
@@ -402,4 +402,5 @@ Run all tests in one command:
 - `InvoiceServiceTest`: 7 isolated unit tests with Mockito for single-roundtrip `findAllById` loading, missing transactions (404), mixed currency conflict (409), snapshot creation, pessimistic row lock patching, and cascade deletion.
 - `InvoiceSnapshotEngineTest`: 2 isolated tests for deep copying transaction, tax, and fee entities into Memento snapshots.
 - `TransactionTypeTest` & `NavanFeeKindTest`: 18 tests for enum serialization, case-insensitive parsing, and unknown value validation.
+- `ErrorCodeTest`: 7 isolated tests validating `ErrorCode` enum mappings, template parameter formatting, and dynamic message resolution across `NavanBaseException` subclasses.
 - `GlobalExceptionHandlerTest`: 7 tests for RFC 7807 problem details mapping and conflict response structure with root `id`.

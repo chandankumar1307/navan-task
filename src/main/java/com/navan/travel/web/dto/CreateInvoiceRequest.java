@@ -3,6 +3,7 @@ package com.navan.travel.web.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.navan.travel.web.error.BadRequestException;
 import com.navan.travel.web.error.ConflictException;
+import com.navan.travel.web.error.ErrorCode;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.ArrayList;
@@ -30,19 +31,19 @@ public record CreateInvoiceRequest(
                     continue;
                 }
                 if (!seen.add(id)) {
-                    throw new ConflictException("Duplicate transaction ID listed on invoice request: " + id);
+                    throw new ConflictException(ErrorCode.INVOICE_DUPLICATE_TXN_ID, id);
                 }
                 result.add(id);
             }
         }
         if (transactionId != null && !transactionId.isBlank()) {
             if (result.contains(transactionId)) {
-                throw new ConflictException("Duplicate transaction ID listed on invoice request: " + transactionId);
+                throw new ConflictException(ErrorCode.INVOICE_DUPLICATE_TXN_ID, transactionId);
             }
             result.add(transactionId);
         }
         if (result.isEmpty()) {
-            throw new BadRequestException("At least one transaction_id or transaction_ids must be provided to create an invoice");
+            throw new BadRequestException(ErrorCode.INVOICE_EMPTY_REQUEST);
         }
         return result;
     }

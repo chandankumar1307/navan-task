@@ -19,6 +19,7 @@ import com.navan.travel.strategy.TransactionTypeHandler;
 import com.navan.travel.web.dto.*;
 import com.navan.travel.web.error.BadRequestException;
 import com.navan.travel.web.error.ConflictException;
+import com.navan.travel.web.error.ErrorCode;
 import com.navan.travel.web.error.ResourceNotFoundException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
@@ -63,7 +64,8 @@ public class InvoiceService {
         // Enforce Global Lock Ordering Hierarchy: Transactions FIRST (lexicographically sorted), Invoice SECOND
         List<String> txnIds = request.resolveTransactionIds();
         List<String> sortedTxnIds = txnIds.stream().sorted().toList();
-        List<TransactionEntity> transactions = loadTransactions(sortedTxnIds);
+        loadTransactions(sortedTxnIds); // validates existence and locks/touches in global order
+        List<TransactionEntity> transactions = loadTransactions(txnIds); // preserve input order for snapshot
 
         validateCurrencies(transactions);
 
@@ -81,14 +83,14 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public InvoiceResponse getInvoice(String id) {
         InvoiceEntity invoice = invoiceRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVOICE_NOT_FOUND, id));
         return toResponse(invoice);
     }
 
     @Transactional(readOnly = true)
     public PageResponse<InvoiceResponse> listInvoices(int limit, long offset) {
         if (limit > 100) {
-            throw new BadRequestException("limit cannot exceed 100");
+            throw new BadRequestException(ErrorCode.LIMIT_EXCEEDED);
         }
         if (limit < 1) {
             limit = 50;
@@ -112,11 +114,12 @@ public class InvoiceService {
         // Enforce Global Lock Ordering Hierarchy: Transactions FIRST (lexicographically sorted), Invoice SECOND
         List<String> txnIds = request.resolveTransactionIds();
         List<String> sortedTxnIds = txnIds.stream().sorted().toList();
-        List<TransactionEntity> transactions = loadTransactions(sortedTxnIds);
+        loadTransactions(sortedTxnIds);
+        List<TransactionEntity> transactions = loadTransactions(txnIds);
         validateCurrencies(transactions);
 
         InvoiceEntity invoice = invoiceRepository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVOICE_NOT_FOUND, id));
 
         String currency = transactions.get(0).getCurrency();
         BigDecimal grandTotal = calculateGrandTotal(transactions);
@@ -133,7 +136,7 @@ public class InvoiceService {
     @Transactional
     public void deleteInvoice(String id) {
         InvoiceEntity invoice = invoiceRepository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVOICE_NOT_FOUND, id));
         invoiceRepository.delete(invoice);
     }
 
@@ -145,7 +148,7 @@ public class InvoiceService {
                     .collect(Collectors.toSet());
             for (String id : txnIds) {
                 if (!foundIds.contains(id)) {
-                    throw new ResourceNotFoundException("Transaction not found for invoice: " + id);
+                    throw new ResourceNotFoundException(ErrorCode.TRANSACTION_NOT_FOUND_FOR_INVOICE, id);
                 }
             }
         }
@@ -163,8 +166,7 @@ public class InvoiceService {
         String baseCurrency = transactions.get(0).getCurrency();
         for (TransactionEntity txn : transactions) {
             if (!baseCurrency.equalsIgnoreCase(txn.getCurrency())) {
-                throw new ConflictException("Mixed currencies detected: all transactions on an invoice must share the same currency (expected "
-                        + baseCurrency + ", found " + txn.getCurrency() + ")");
+                throw new ConflictException(ErrorCode.INVOICE_MIXED_CURRENCIES, baseCurrency, txn.getCurrency());
             }
         }
     }

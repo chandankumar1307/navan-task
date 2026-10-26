@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navan.travel.domain.TransactionType;
 import com.navan.travel.domain.metadata.NavanFeeMetadata;
 import com.navan.travel.web.error.BadRequestException;
+import com.navan.travel.web.error.ErrorCode;
 import jakarta.validation.Validator;
 import org.springframework.stereotype.Component;
 
@@ -27,7 +28,7 @@ public class NavanFeeTransactionHandler extends AbstractTransactionHandler<Navan
     @Override
     protected void validateCustom(NavanFeeMetadata metadata) {
         if (metadata.feeKind() == null) {
-            throw new BadRequestException("navan_fee must include a valid fee_kind ('trip_fee' or 'agent_call_fee')");
+            throw new BadRequestException(ErrorCode.NAVAN_FEE_KIND_REQUIRED);
         }
     }
 

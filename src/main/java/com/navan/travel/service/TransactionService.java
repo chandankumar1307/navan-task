@@ -14,6 +14,7 @@ import com.navan.travel.strategy.TransactionTypeHandler;
 import com.navan.travel.web.dto.*;
 import com.navan.travel.web.error.BadRequestException;
 import com.navan.travel.web.error.ConflictException;
+import com.navan.travel.web.error.ErrorCode;
 import com.navan.travel.web.error.ResourceNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Pageable;
@@ -48,15 +49,15 @@ public class TransactionService {
     @Transactional
     public TransactionResponse createTransaction(CreateTransactionRequest request) {
         if (request.type() == null) {
-            throw new BadRequestException("type is required");
+            throw new BadRequestException(ErrorCode.TRANSACTION_TYPE_REQUIRED);
         }
         if (request.externalId() == null || request.externalId().isBlank()) {
-            throw new BadRequestException("external_id is required");
+            throw new BadRequestException(ErrorCode.EXTERNAL_ID_REQUIRED);
         }
 
         // Fast-path duplicate check
         transactionRepository.findByExternalId(request.externalId().trim()).ifPresent(existing -> {
-            throw new ConflictException("Transaction with external_id '" + request.externalId() + "' already exists.", existing.getId());
+            throw ConflictException.withExistingId(ErrorCode.TRANSACTION_EXTERNAL_ID_CONFLICT, existing.getId(), request.externalId());
         });
 
         // Validate metadata using Strategy handler
@@ -99,14 +100,14 @@ public class TransactionService {
     @Transactional(readOnly = true)
     public TransactionResponse getTransaction(String id) {
         TransactionEntity entity = transactionRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.TRANSACTION_NOT_FOUND, id));
         return toResponse(entity);
     }
 
     @Transactional(readOnly = true)
     public PageResponse<TransactionResponse> listTransactions(int limit, long offset) {
         if (limit > 100) {
-            throw new BadRequestException("limit cannot exceed 100");
+            throw new BadRequestException(ErrorCode.LIMIT_EXCEEDED);
         }
         if (limit < 1) {
             limit = 50;
@@ -128,11 +129,11 @@ public class TransactionService {
     @Transactional
     public TransactionResponse patchTransaction(String id, PatchTransactionRequest request) {
         TransactionEntity entity = transactionRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.TRANSACTION_NOT_FOUND, id));
 
         // Invariant: If on any invoice, return 409 and mutate nothing
         if (invoiceSnapshotRepository.existsByOriginalTransactionId(id)) {
-            throw new ConflictException("Transaction is included on an active invoice and is frozen. Mutations are rejected.");
+            throw new ConflictException(ErrorCode.TRANSACTION_FROZEN_MUTATION_BLOCKED);
         }
 
         if (request.total() != null) {
@@ -169,11 +170,11 @@ public class TransactionService {
     @Transactional
     public void deleteTransaction(String id) {
         TransactionEntity entity = transactionRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.TRANSACTION_NOT_FOUND, id));
 
         // Invariant: If on any invoice, return 409 and delete nothing
         if (invoiceSnapshotRepository.existsByOriginalTransactionId(id)) {
-            throw new ConflictException("Transaction is included on an active invoice and cannot be deleted.");
+            throw new ConflictException(ErrorCode.TRANSACTION_FROZEN_DELETION_BLOCKED);
         }
 
         transactionRepository.delete(entity);

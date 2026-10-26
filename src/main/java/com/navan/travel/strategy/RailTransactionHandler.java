@@ -5,6 +5,7 @@ import com.navan.travel.domain.TransactionType;
 import com.navan.travel.domain.metadata.RailLeg;
 import com.navan.travel.domain.metadata.RailMetadata;
 import com.navan.travel.web.error.BadRequestException;
+import com.navan.travel.web.error.ErrorCode;
 import jakarta.validation.Validator;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +32,7 @@ public class RailTransactionHandler extends AbstractTransactionHandler<RailMetad
     @Override
     protected void validateCustom(RailMetadata metadata) {
         if (metadata.legs() == null || metadata.legs().isEmpty()) {
-            throw new BadRequestException("Rail metadata must include at least one leg");
+            throw new BadRequestException(ErrorCode.RAIL_LEGS_REQUIRED);
         }
         for (RailLeg leg : metadata.legs()) {
             Instant departure;
@@ -40,10 +41,10 @@ public class RailTransactionHandler extends AbstractTransactionHandler<RailMetad
                 departure = Instant.parse(leg.departure());
                 arrival = Instant.parse(leg.arrival());
             } catch (DateTimeParseException e) {
-                throw new BadRequestException("Invalid timestamp for rail leg departure or arrival (expected ISO-8601)");
+                throw new BadRequestException(ErrorCode.RAIL_TIMESTAMP_INVALID);
             }
             if (!arrival.isAfter(departure)) {
-                throw new BadRequestException("Rail leg departure must be strictly before arrival");
+                throw new BadRequestException(ErrorCode.RAIL_DEPARTURE_AFTER_ARRIVAL);
             }
         }
     }

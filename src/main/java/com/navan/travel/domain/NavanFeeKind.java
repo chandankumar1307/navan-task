@@ -2,6 +2,7 @@ package com.navan.travel.domain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.navan.travel.web.error.ErrorCode;
 
 public enum NavanFeeKind {
     TRIP_FEE("trip_fee"),
@@ -28,6 +29,6 @@ public enum NavanFeeKind {
                 return kind;
             }
         }
-        throw new IllegalArgumentException("Unknown navan_fee fee_kind: " + value);
+        throw new IllegalArgumentException(ErrorCode.UNKNOWN_NAVAN_FEE_KIND.formatMessage(value));
     }
 }

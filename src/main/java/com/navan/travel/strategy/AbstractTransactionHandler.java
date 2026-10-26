@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navan.travel.domain.metadata.TransactionMetadata;
 import com.navan.travel.web.error.BadRequestException;
+import com.navan.travel.web.error.ErrorCode;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 
@@ -23,26 +24,26 @@ public abstract class AbstractTransactionHandler<T extends TransactionMetadata> 
     @Override
     public T parseAndValidateMetadata(JsonNode metadataNode) {
         if (metadataNode == null || metadataNode.isNull() || metadataNode.isMissingNode() || metadataNode.isEmpty()) {
-            throw new BadRequestException("metadata object is required for transaction type: " + getType().getValue());
+            throw new BadRequestException(ErrorCode.METADATA_REQUIRED, getType().getValue());
         }
         try {
             T metadata = objectMapper.treeToValue(metadataNode, getMetadataClass());
             if (metadata == null) {
-                throw new BadRequestException("metadata could not be parsed for " + getType().getValue());
+                throw new BadRequestException(ErrorCode.METADATA_PARSE_FAILED, getType().getValue());
             }
             Set<ConstraintViolation<T>> violations = validator.validate(metadata);
             if (!violations.isEmpty()) {
                 String errorMsg = violations.stream()
                         .map(v -> v.getPropertyPath() + ": " + v.getMessage())
                         .collect(Collectors.joining(", "));
-                throw new BadRequestException("Validation failed for " + getType().getValue() + " metadata: " + errorMsg);
+                throw new BadRequestException(ErrorCode.METADATA_VALIDATION_FAILED, getType().getValue(), errorMsg);
             }
             validateCustom(metadata);
             return metadata;
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            throw new BadRequestException("Invalid " + getType().getValue() + " metadata: " + e.getMessage());
+            throw new BadRequestException(ErrorCode.METADATA_INVALID, getType().getValue(), e.getMessage());
         }
     }
 
